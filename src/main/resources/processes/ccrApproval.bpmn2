@@ -1,0 +1,449 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!--
+  CCR approval (Apache KIE / Kogito):
+    submitted -> manager approval (group `supervisors`, reminder + escalation timers)
+    -> finance approval (group `finance`) -> finalize -> approved / rejected.
+  Same flow as the previous engine's ccrApproval process.
+  Service tasks call methods on AftermarketDomainEvents (a Spring bean); they only emit
+  domain events / write through the JPA layer. Escalation (interrupting timer) goes straight to
+  finalize with `approved` unset, i.e. the request is rejected, exactly like before.
+-->
+<bpmn2:definitions xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+                   xmlns:bpmn2="http://www.omg.org/spec/BPMN/20100524/MODEL"
+                   xmlns:drools="http://www.jboss.org/drools"
+                   id="_ccrApprovalDefinitions"
+                   targetNamespace="http://www.omg.org/bpmn20">
+  <bpmn2:itemDefinition id="_requestIdItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_entityTypeItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_submittedByItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_employeeGroupItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_supervisorGroupItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_financeGroupItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_approvedItem" structureRef="Boolean"/>
+  <bpmn2:itemDefinition id="_decisionItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_commentItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_lastCompletedByItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerReminderDurationItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerEscalationDurationItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_recordSubmission_businessKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_recordSubmission_submittedByItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_notifyManager_businessKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_notifyFinance_businessKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_remindManager_businessKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_escalateManager_businessKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_finalizeRequest_businessKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_finalizeRequest_approvedItem" structureRef="Boolean"/>
+  <bpmn2:itemDefinition id="_finalizeRequest_lastCompletedByItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_notifyOutcome_businessKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerApproval_TaskNameItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerApproval_GroupIdItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerApproval_taskKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerApproval_requestIdItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerApproval_approvedOutItem" structureRef="Boolean"/>
+  <bpmn2:itemDefinition id="_managerApproval_decisionOutItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerApproval_commentOutItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_managerApproval_lastCompletedByOutItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_financeApproval_TaskNameItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_financeApproval_GroupIdItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_financeApproval_taskKeyItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_financeApproval_requestIdItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_financeApproval_approvedOutItem" structureRef="Boolean"/>
+  <bpmn2:itemDefinition id="_financeApproval_decisionOutItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_financeApproval_commentOutItem" structureRef="String"/>
+  <bpmn2:itemDefinition id="_financeApproval_lastCompletedByOutItem" structureRef="String"/>
+  <bpmn2:interface id="_recordSubmission_ServiceInterface" name="com.aftermarket.backend.workflow.AftermarketDomainEvents" implementationRef="com.aftermarket.backend.workflow.AftermarketDomainEvents">
+    <bpmn2:operation id="_recordSubmission_ServiceOperation" name="recordSubmission" implementationRef="recordSubmission"/>
+  </bpmn2:interface>
+  <bpmn2:interface id="_notifyManager_ServiceInterface" name="com.aftermarket.backend.workflow.AftermarketDomainEvents" implementationRef="com.aftermarket.backend.workflow.AftermarketDomainEvents">
+    <bpmn2:operation id="_notifyManager_ServiceOperation" name="notifyManager" implementationRef="notifyManager"/>
+  </bpmn2:interface>
+  <bpmn2:interface id="_notifyFinance_ServiceInterface" name="com.aftermarket.backend.workflow.AftermarketDomainEvents" implementationRef="com.aftermarket.backend.workflow.AftermarketDomainEvents">
+    <bpmn2:operation id="_notifyFinance_ServiceOperation" name="notifyFinance" implementationRef="notifyFinance"/>
+  </bpmn2:interface>
+  <bpmn2:interface id="_remindManager_ServiceInterface" name="com.aftermarket.backend.workflow.AftermarketDomainEvents" implementationRef="com.aftermarket.backend.workflow.AftermarketDomainEvents">
+    <bpmn2:operation id="_remindManager_ServiceOperation" name="remindManager" implementationRef="remindManager"/>
+  </bpmn2:interface>
+  <bpmn2:interface id="_escalateManager_ServiceInterface" name="com.aftermarket.backend.workflow.AftermarketDomainEvents" implementationRef="com.aftermarket.backend.workflow.AftermarketDomainEvents">
+    <bpmn2:operation id="_escalateManager_ServiceOperation" name="escalateManager" implementationRef="escalateManager"/>
+  </bpmn2:interface>
+  <bpmn2:interface id="_finalizeRequest_ServiceInterface" name="com.aftermarket.backend.workflow.AftermarketDomainEvents" implementationRef="com.aftermarket.backend.workflow.AftermarketDomainEvents">
+    <bpmn2:operation id="_finalizeRequest_ServiceOperation" name="finalizeCcrDirect" implementationRef="finalizeCcrDirect"/>
+  </bpmn2:interface>
+  <bpmn2:interface id="_notifyOutcome_ServiceInterface" name="com.aftermarket.backend.workflow.AftermarketDomainEvents" implementationRef="com.aftermarket.backend.workflow.AftermarketDomainEvents">
+    <bpmn2:operation id="_notifyOutcome_ServiceOperation" name="notifyOutcome" implementationRef="notifyOutcome"/>
+  </bpmn2:interface>
+  <bpmn2:process id="ccrApproval" name="CCR Approval" drools:packageName="com.aftermarket.backend.workflow.process" drools:version="1.0" drools:adHoc="false" isExecutable="true" processType="Public">
+    <bpmn2:extensionElements>
+      <drools:import name="com.aftermarket.backend.workflow.AftermarketDomainEvents"/>
+    </bpmn2:extensionElements>
+    <bpmn2:property id="requestId" itemSubjectRef="_requestIdItem" name="requestId"/>
+    <bpmn2:property id="entityType" itemSubjectRef="_entityTypeItem" name="entityType"/>
+    <bpmn2:property id="submittedBy" itemSubjectRef="_submittedByItem" name="submittedBy"/>
+    <bpmn2:property id="employeeGroup" itemSubjectRef="_employeeGroupItem" name="employeeGroup"/>
+    <bpmn2:property id="supervisorGroup" itemSubjectRef="_supervisorGroupItem" name="supervisorGroup"/>
+    <bpmn2:property id="financeGroup" itemSubjectRef="_financeGroupItem" name="financeGroup"/>
+    <bpmn2:property id="approved" itemSubjectRef="_approvedItem" name="approved"/>
+    <bpmn2:property id="decision" itemSubjectRef="_decisionItem" name="decision"/>
+    <bpmn2:property id="comment" itemSubjectRef="_commentItem" name="comment"/>
+    <bpmn2:property id="lastCompletedBy" itemSubjectRef="_lastCompletedByItem" name="lastCompletedBy"/>
+    <bpmn2:property id="managerReminderDuration" itemSubjectRef="_managerReminderDurationItem" name="managerReminderDuration"/>
+    <bpmn2:property id="managerEscalationDuration" itemSubjectRef="_managerEscalationDurationItem" name="managerEscalationDuration"/>
+    <bpmn2:startEvent id="start" name="CCR submitted">
+      <bpmn2:outgoing>flow-start</bpmn2:outgoing>
+    </bpmn2:startEvent>
+    <bpmn2:serviceTask id="recordSubmission" drools:serviceimplementation="Java" drools:serviceinterface="com.aftermarket.backend.workflow.AftermarketDomainEvents" drools:serviceoperation="recordSubmission" name="Record submission" implementation="Java" operationRef="_recordSubmission_ServiceOperation">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Record submission]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-start</bpmn2:incoming>
+      <bpmn2:outgoing>flow-recorded</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_recordSubmission_businessKeyInputX" drools:dtype="String" itemSubjectRef="_recordSubmission_businessKeyItem" name="businessKey"/>
+        <bpmn2:dataInput id="_recordSubmission_submittedByInputX" drools:dtype="String" itemSubjectRef="_recordSubmission_submittedByItem" name="submittedBy"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_recordSubmission_businessKeyInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_recordSubmission_submittedByInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet/>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_recordSubmission_businessKeyInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>submittedBy</bpmn2:sourceRef>
+        <bpmn2:targetRef>_recordSubmission_submittedByInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:serviceTask>
+    <bpmn2:serviceTask id="notifyManager" drools:serviceimplementation="Java" drools:serviceinterface="com.aftermarket.backend.workflow.AftermarketDomainEvents" drools:serviceoperation="notifyManager" name="Notify manager" implementation="Java" operationRef="_notifyManager_ServiceOperation">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Notify manager]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-recorded</bpmn2:incoming>
+      <bpmn2:outgoing>flow-notified-manager</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_notifyManager_businessKeyInputX" drools:dtype="String" itemSubjectRef="_notifyManager_businessKeyItem" name="businessKey"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_notifyManager_businessKeyInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet/>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_notifyManager_businessKeyInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:serviceTask>
+    <bpmn2:userTask id="managerApproval" name="Manager approval">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Manager approval]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-notified-manager</bpmn2:incoming>
+      <bpmn2:outgoing>flow-manager-decided</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_managerApproval_TaskNameInputX" drools:dtype="String" itemSubjectRef="_managerApproval_TaskNameItem" name="TaskName"/>
+        <bpmn2:dataInput id="_managerApproval_GroupIdInputX" drools:dtype="String" itemSubjectRef="_managerApproval_GroupIdItem" name="GroupId"/>
+        <bpmn2:dataInput id="_managerApproval_taskKeyInputX" drools:dtype="String" itemSubjectRef="_managerApproval_taskKeyItem" name="taskKey"/>
+        <bpmn2:dataInput id="_managerApproval_requestIdInputX" drools:dtype="String" itemSubjectRef="_managerApproval_requestIdItem" name="requestId"/>
+        <bpmn2:dataOutput id="_managerApproval_approvedOutputX" drools:dtype="Boolean" itemSubjectRef="_managerApproval_approvedOutItem" name="approved"/>
+        <bpmn2:dataOutput id="_managerApproval_decisionOutputX" drools:dtype="String" itemSubjectRef="_managerApproval_decisionOutItem" name="decision"/>
+        <bpmn2:dataOutput id="_managerApproval_commentOutputX" drools:dtype="String" itemSubjectRef="_managerApproval_commentOutItem" name="comment"/>
+        <bpmn2:dataOutput id="_managerApproval_lastCompletedByOutputX" drools:dtype="String" itemSubjectRef="_managerApproval_lastCompletedByOutItem" name="lastCompletedBy"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_managerApproval_TaskNameInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_managerApproval_GroupIdInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_managerApproval_taskKeyInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_managerApproval_requestIdInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet>
+          <bpmn2:dataOutputRefs>_managerApproval_approvedOutputX</bpmn2:dataOutputRefs>
+          <bpmn2:dataOutputRefs>_managerApproval_decisionOutputX</bpmn2:dataOutputRefs>
+          <bpmn2:dataOutputRefs>_managerApproval_commentOutputX</bpmn2:dataOutputRefs>
+          <bpmn2:dataOutputRefs>_managerApproval_lastCompletedByOutputX</bpmn2:dataOutputRefs>
+        </bpmn2:outputSet>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_managerApproval_TaskNameInputX</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[managerApproval]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_managerApproval_TaskNameInputX</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_managerApproval_taskKeyInputX</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[managerApproval]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_managerApproval_taskKeyInputX</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>supervisorGroup</bpmn2:sourceRef>
+        <bpmn2:targetRef>_managerApproval_GroupIdInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_managerApproval_requestIdInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_managerApproval_approvedOutputX</bpmn2:sourceRef>
+        <bpmn2:targetRef>approved</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_managerApproval_decisionOutputX</bpmn2:sourceRef>
+        <bpmn2:targetRef>decision</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_managerApproval_commentOutputX</bpmn2:sourceRef>
+        <bpmn2:targetRef>comment</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_managerApproval_lastCompletedByOutputX</bpmn2:sourceRef>
+        <bpmn2:targetRef>lastCompletedBy</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+    </bpmn2:userTask>
+    <bpmn2:boundaryEvent id="managerReminderTimer" name="Reminder" drools:boundaryca="false" attachedToRef="managerApproval" cancelActivity="false">
+      <bpmn2:outgoing>flow-reminder</bpmn2:outgoing>
+      <bpmn2:timerEventDefinition>
+        <bpmn2:timeDuration xsi:type="bpmn2:tFormalExpression">#{managerReminderDuration}</bpmn2:timeDuration>
+      </bpmn2:timerEventDefinition>
+    </bpmn2:boundaryEvent>
+    <bpmn2:boundaryEvent id="managerEscalationTimer" name="Escalation" drools:boundaryca="true" attachedToRef="managerApproval" cancelActivity="true">
+      <bpmn2:outgoing>flow-escalation</bpmn2:outgoing>
+      <bpmn2:timerEventDefinition>
+        <bpmn2:timeDuration xsi:type="bpmn2:tFormalExpression">#{managerEscalationDuration}</bpmn2:timeDuration>
+      </bpmn2:timerEventDefinition>
+    </bpmn2:boundaryEvent>
+    <bpmn2:serviceTask id="remindManager" drools:serviceimplementation="Java" drools:serviceinterface="com.aftermarket.backend.workflow.AftermarketDomainEvents" drools:serviceoperation="remindManager" name="Send reminder" implementation="Java" operationRef="_remindManager_ServiceOperation">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Send reminder]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-reminder</bpmn2:incoming>
+      <bpmn2:outgoing>flow-reminder-end</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_remindManager_businessKeyInputX" drools:dtype="String" itemSubjectRef="_remindManager_businessKeyItem" name="businessKey"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_remindManager_businessKeyInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet/>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_remindManager_businessKeyInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:serviceTask>
+    <bpmn2:serviceTask id="escalateManager" drools:serviceimplementation="Java" drools:serviceinterface="com.aftermarket.backend.workflow.AftermarketDomainEvents" drools:serviceoperation="escalateManager" name="Escalate to management" implementation="Java" operationRef="_escalateManager_ServiceOperation">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Escalate to management]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-escalation</bpmn2:incoming>
+      <bpmn2:outgoing>flow-escalated</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_escalateManager_businessKeyInputX" drools:dtype="String" itemSubjectRef="_escalateManager_businessKeyItem" name="businessKey"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_escalateManager_businessKeyInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet/>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_escalateManager_businessKeyInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:serviceTask>
+    <bpmn2:endEvent id="reminderSent" name="Reminder sent">
+      <bpmn2:incoming>flow-reminder-end</bpmn2:incoming>
+    </bpmn2:endEvent>
+    <bpmn2:exclusiveGateway id="managerDecisionGateway" name="Manager decision" gatewayDirection="Diverging" default="flow-manager-not-approved">
+      <bpmn2:incoming>flow-manager-decided</bpmn2:incoming>
+      <bpmn2:outgoing>flow-manager-approved</bpmn2:outgoing>
+      <bpmn2:outgoing>flow-manager-not-approved</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:serviceTask id="notifyFinance" drools:serviceimplementation="Java" drools:serviceinterface="com.aftermarket.backend.workflow.AftermarketDomainEvents" drools:serviceoperation="notifyFinance" name="Notify finance" implementation="Java" operationRef="_notifyFinance_ServiceOperation">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Notify finance]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-manager-approved</bpmn2:incoming>
+      <bpmn2:outgoing>flow-finance-notified</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_notifyFinance_businessKeyInputX" drools:dtype="String" itemSubjectRef="_notifyFinance_businessKeyItem" name="businessKey"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_notifyFinance_businessKeyInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet/>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_notifyFinance_businessKeyInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:serviceTask>
+    <bpmn2:userTask id="financeApproval" name="Finance approval">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Finance approval]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-finance-notified</bpmn2:incoming>
+      <bpmn2:outgoing>flow-finance-decided</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_financeApproval_TaskNameInputX" drools:dtype="String" itemSubjectRef="_financeApproval_TaskNameItem" name="TaskName"/>
+        <bpmn2:dataInput id="_financeApproval_GroupIdInputX" drools:dtype="String" itemSubjectRef="_financeApproval_GroupIdItem" name="GroupId"/>
+        <bpmn2:dataInput id="_financeApproval_taskKeyInputX" drools:dtype="String" itemSubjectRef="_financeApproval_taskKeyItem" name="taskKey"/>
+        <bpmn2:dataInput id="_financeApproval_requestIdInputX" drools:dtype="String" itemSubjectRef="_financeApproval_requestIdItem" name="requestId"/>
+        <bpmn2:dataOutput id="_financeApproval_approvedOutputX" drools:dtype="Boolean" itemSubjectRef="_financeApproval_approvedOutItem" name="approved"/>
+        <bpmn2:dataOutput id="_financeApproval_decisionOutputX" drools:dtype="String" itemSubjectRef="_financeApproval_decisionOutItem" name="decision"/>
+        <bpmn2:dataOutput id="_financeApproval_commentOutputX" drools:dtype="String" itemSubjectRef="_financeApproval_commentOutItem" name="comment"/>
+        <bpmn2:dataOutput id="_financeApproval_lastCompletedByOutputX" drools:dtype="String" itemSubjectRef="_financeApproval_lastCompletedByOutItem" name="lastCompletedBy"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_financeApproval_TaskNameInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_financeApproval_GroupIdInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_financeApproval_taskKeyInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_financeApproval_requestIdInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet>
+          <bpmn2:dataOutputRefs>_financeApproval_approvedOutputX</bpmn2:dataOutputRefs>
+          <bpmn2:dataOutputRefs>_financeApproval_decisionOutputX</bpmn2:dataOutputRefs>
+          <bpmn2:dataOutputRefs>_financeApproval_commentOutputX</bpmn2:dataOutputRefs>
+          <bpmn2:dataOutputRefs>_financeApproval_lastCompletedByOutputX</bpmn2:dataOutputRefs>
+        </bpmn2:outputSet>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_financeApproval_TaskNameInputX</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[financeApproval]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_financeApproval_TaskNameInputX</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:targetRef>_financeApproval_taskKeyInputX</bpmn2:targetRef>
+        <bpmn2:assignment>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[financeApproval]]></bpmn2:from>
+          <bpmn2:to xsi:type="bpmn2:tFormalExpression">_financeApproval_taskKeyInputX</bpmn2:to>
+        </bpmn2:assignment>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>financeGroup</bpmn2:sourceRef>
+        <bpmn2:targetRef>_financeApproval_GroupIdInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_financeApproval_requestIdInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_financeApproval_approvedOutputX</bpmn2:sourceRef>
+        <bpmn2:targetRef>approved</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_financeApproval_decisionOutputX</bpmn2:sourceRef>
+        <bpmn2:targetRef>decision</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_financeApproval_commentOutputX</bpmn2:sourceRef>
+        <bpmn2:targetRef>comment</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+      <bpmn2:dataOutputAssociation>
+        <bpmn2:sourceRef>_financeApproval_lastCompletedByOutputX</bpmn2:sourceRef>
+        <bpmn2:targetRef>lastCompletedBy</bpmn2:targetRef>
+      </bpmn2:dataOutputAssociation>
+    </bpmn2:userTask>
+    <bpmn2:exclusiveGateway id="joinGateway" name="Join to finalize" gatewayDirection="Converging">
+      <bpmn2:incoming>flow-finance-decided</bpmn2:incoming>
+      <bpmn2:incoming>flow-manager-not-approved</bpmn2:incoming>
+      <bpmn2:incoming>flow-escalated</bpmn2:incoming>
+      <bpmn2:outgoing>flow-to-finalize</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:serviceTask id="finalizeRequest" drools:serviceimplementation="Java" drools:serviceinterface="com.aftermarket.backend.workflow.AftermarketDomainEvents" drools:serviceoperation="finalizeCcrDirect" name="Finalize CCR" implementation="Java" operationRef="_finalizeRequest_ServiceOperation">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Finalize CCR]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-to-finalize</bpmn2:incoming>
+      <bpmn2:outgoing>flow-finalized</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_finalizeRequest_businessKeyInputX" drools:dtype="String" itemSubjectRef="_finalizeRequest_businessKeyItem" name="businessKey"/>
+        <bpmn2:dataInput id="_finalizeRequest_approvedInputX" drools:dtype="Boolean" itemSubjectRef="_finalizeRequest_approvedItem" name="approved"/>
+        <bpmn2:dataInput id="_finalizeRequest_lastCompletedByInputX" drools:dtype="String" itemSubjectRef="_finalizeRequest_lastCompletedByItem" name="lastCompletedBy"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_finalizeRequest_businessKeyInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_finalizeRequest_approvedInputX</bpmn2:dataInputRefs>
+          <bpmn2:dataInputRefs>_finalizeRequest_lastCompletedByInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet/>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_finalizeRequest_businessKeyInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>approved</bpmn2:sourceRef>
+        <bpmn2:targetRef>_finalizeRequest_approvedInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>lastCompletedBy</bpmn2:sourceRef>
+        <bpmn2:targetRef>_finalizeRequest_lastCompletedByInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:serviceTask>
+    <bpmn2:exclusiveGateway id="outcomeGateway" name="Outcome" gatewayDirection="Diverging" default="flow-outcome-rejected">
+      <bpmn2:incoming>flow-finalized</bpmn2:incoming>
+      <bpmn2:outgoing>flow-outcome-approved</bpmn2:outgoing>
+      <bpmn2:outgoing>flow-outcome-rejected</bpmn2:outgoing>
+    </bpmn2:exclusiveGateway>
+    <bpmn2:serviceTask id="notifyOutcome" drools:serviceimplementation="Java" drools:serviceinterface="com.aftermarket.backend.workflow.AftermarketDomainEvents" drools:serviceoperation="notifyOutcome" name="Notify approval" implementation="Java" operationRef="_notifyOutcome_ServiceOperation">
+      <bpmn2:extensionElements>
+        <drools:metaData name="elementname">
+          <drools:metaValue><![CDATA[Notify approval]]></drools:metaValue>
+        </drools:metaData>
+      </bpmn2:extensionElements>
+      <bpmn2:incoming>flow-outcome-approved</bpmn2:incoming>
+      <bpmn2:outgoing>flow-approved-end</bpmn2:outgoing>
+      <bpmn2:ioSpecification>
+        <bpmn2:dataInput id="_notifyOutcome_businessKeyInputX" drools:dtype="String" itemSubjectRef="_notifyOutcome_businessKeyItem" name="businessKey"/>
+        <bpmn2:inputSet>
+          <bpmn2:dataInputRefs>_notifyOutcome_businessKeyInputX</bpmn2:dataInputRefs>
+        </bpmn2:inputSet>
+        <bpmn2:outputSet/>
+      </bpmn2:ioSpecification>
+      <bpmn2:dataInputAssociation>
+        <bpmn2:sourceRef>requestId</bpmn2:sourceRef>
+        <bpmn2:targetRef>_notifyOutcome_businessKeyInputX</bpmn2:targetRef>
+      </bpmn2:dataInputAssociation>
+    </bpmn2:serviceTask>
+    <bpmn2:endEvent id="completed" name="Approved">
+      <bpmn2:incoming>flow-approved-end</bpmn2:incoming>
+    </bpmn2:endEvent>
+    <bpmn2:endEvent id="rejected" name="Rejected">
+      <bpmn2:incoming>flow-outcome-rejected</bpmn2:incoming>
+    </bpmn2:endEvent>
+    <bpmn2:sequenceFlow id="flow-start" sourceRef="start" targetRef="recordSubmission"/>
+    <bpmn2:sequenceFlow id="flow-recorded" sourceRef="recordSubmission" targetRef="notifyManager"/>
+    <bpmn2:sequenceFlow id="flow-notified-manager" sourceRef="notifyManager" targetRef="managerApproval"/>
+    <bpmn2:sequenceFlow id="flow-manager-decided" sourceRef="managerApproval" targetRef="managerDecisionGateway"/>
+    <bpmn2:sequenceFlow id="flow-manager-approved" name="Approved" sourceRef="managerDecisionGateway" targetRef="notifyFinance">
+      <bpmn2:conditionExpression xsi:type="bpmn2:tFormalExpression" language="http://www.java.com/java"><![CDATA[return approved != null && approved;]]></bpmn2:conditionExpression>
+    </bpmn2:sequenceFlow>
+    <bpmn2:sequenceFlow id="flow-manager-not-approved" name="Rejected" sourceRef="managerDecisionGateway" targetRef="joinGateway"/>
+    <bpmn2:sequenceFlow id="flow-finance-notified" sourceRef="notifyFinance" targetRef="financeApproval"/>
+    <bpmn2:sequenceFlow id="flow-finance-decided" sourceRef="financeApproval" targetRef="joinGateway"/>
+    <bpmn2:sequenceFlow id="flow-to-finalize" sourceRef="joinGateway" targetRef="finalizeRequest"/>
+    <bpmn2:sequenceFlow id="flow-finalized" sourceRef="finalizeRequest" targetRef="outcomeGateway"/>
+    <bpmn2:sequenceFlow id="flow-outcome-approved" name="Approved" sourceRef="outcomeGateway" targetRef="notifyOutcome">
+      <bpmn2:conditionExpression xsi:type="bpmn2:tFormalExpression" language="http://www.java.com/java"><![CDATA[return approved != null && approved;]]></bpmn2:conditionExpression>
+    </bpmn2:sequenceFlow>
+    <bpmn2:sequenceFlow id="flow-outcome-rejected" name="Rejected" sourceRef="outcomeGateway" targetRef="rejected"/>
+    <bpmn2:sequenceFlow id="flow-approved-end" sourceRef="notifyOutcome" targetRef="completed"/>
+    <bpmn2:sequenceFlow id="flow-reminder" sourceRef="managerReminderTimer" targetRef="remindManager"/>
+    <bpmn2:sequenceFlow id="flow-reminder-end" sourceRef="remindManager" targetRef="reminderSent"/>
+    <bpmn2:sequenceFlow id="flow-escalation" sourceRef="managerEscalationTimer" targetRef="escalateManager"/>
+    <bpmn2:sequenceFlow id="flow-escalated" sourceRef="escalateManager" targetRef="joinGateway"/>
+  </bpmn2:process>
+</bpmn2:definitions>
