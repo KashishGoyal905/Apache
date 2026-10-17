@@ -170,7 +170,7 @@
       <bpmn2:dataInputAssociation>
         <bpmn2:targetRef>_managerApproval_TaskNameInputX</bpmn2:targetRef>
         <bpmn2:assignment>
-          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[managerApproval]]></bpmn2:from>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[manager approval]]></bpmn2:from>
           <bpmn2:to xsi:type="bpmn2:tFormalExpression">_managerApproval_TaskNameInputX</bpmn2:to>
         </bpmn2:assignment>
       </bpmn2:dataInputAssociation>
@@ -319,7 +319,7 @@
       <bpmn2:dataInputAssociation>
         <bpmn2:targetRef>_financeApproval_TaskNameInputX</bpmn2:targetRef>
         <bpmn2:assignment>
-          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[financeApproval]]></bpmn2:from>
+          <bpmn2:from xsi:type="bpmn2:tFormalExpression"><![CDATA[finance approval]]></bpmn2:from>
           <bpmn2:to xsi:type="bpmn2:tFormalExpression">_financeApproval_TaskNameInputX</bpmn2:to>
         </bpmn2:assignment>
       </bpmn2:dataInputAssociation>

@@ -1,0 +1,1 @@
+{"$schema":"https://json-schema.org/draft/2019-09/schema","type":"object","properties":{"requestId":{"type":"string","input":true},"taskKey":{"type":"string","input":true},"approved":{"type":"boolean","output":true},"comment":{"type":"string","output":true},"decision":{"type":"string","output":true},"lastCompletedBy":{"type":"string","output":true}}}

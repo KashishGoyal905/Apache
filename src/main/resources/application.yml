@@ -6,8 +6,8 @@ spring:
     name: aftermarket-backend
   datasource:
     url: ${SPRING_DATASOURCE_URL:jdbc:mysql://localhost:3306/aftermarket?createDatabaseIfNotExist=true&nullDatabaseMeansCurrent=true}
-    username: ${SPRING_DATASOURCE_USERNAME:root}
-    password: ${SPRING_DATASOURCE_PASSWORD:manager}
+    username: root
+    password: 123456789
     driver-class-name: com.mysql.cj.jdbc.Driver
   jpa:
     hibernate:

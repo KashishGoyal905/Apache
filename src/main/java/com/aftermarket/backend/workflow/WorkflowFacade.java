@@ -93,7 +93,7 @@ public class WorkflowFacade {
             instance = process.createInstance(model);
         }
         instance.start();
-        if (instance.status() == org.kie.api.runtime.process.ProcessInstance.STATE_ERROR) {
+        if (instance.status() == ProcessInstance.STATE_ERROR) {
             String reason = instance.error().map(e -> e.errorMessage()).orElse("unknown error");
             throw new IllegalStateException("Process " + request.processDefinitionKey() + " failed to start: " + reason);
         }
@@ -233,7 +233,7 @@ public class WorkflowFacade {
     }
 
     private ProcessInstanceResponse toResponse(ProcessInstance<? extends Model> instance) {
-        boolean ended = instance.status() != org.kie.api.runtime.process.ProcessInstance.STATE_ACTIVE;
+        boolean ended = instance.status() != ProcessInstance.STATE_ACTIVE;
         Map<String, Object> vars = new HashMap<>();
         Model model = instance.variables();
         if (model != null && model.toMap() != null) {
